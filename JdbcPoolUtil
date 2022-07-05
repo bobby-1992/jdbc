@@ -1,0 +1,102 @@
+import com.mchange.v2.c3p0.ComboPooledDataSource;
+import com.yunsom.etl.enums.DatabaseEnum;
+import com.yunsom.etl.utils.EnvUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import scala.Tuple5;
+ 
+import java.sql.Connection;
+import java.sql.SQLException;
+ 
+public class MysqlPoolUtil {
+    private Logger logger = LoggerFactory.getLogger(this.getClass().getName());
+    private String DBHOST;
+    private String DBUSER;
+    private String DBNAME;
+    private String DBPORT;
+    private String DBPWD;
+    private static ComboPooledDataSource cpds;
+    private volatile Connection connection;
+    private static volatile MysqlPoolUtil mysqlPoolUtil;
+    private static DatabaseEnum dbName;
+    //获取连接
+    public Connection getConnection(DatabaseEnum dataBaseName) throws SQLException {
+        if (dataBaseName != dbName||null == connection||connection.isClosed()) {
+            try {
+                connection = cpds.getConnection();
+                dbName=dataBaseName;
+            } catch (SQLException throwables) {
+                logger.error(throwables.getMessage());
+            }
+        }
+        return connection;
+    }
+ 
+ 
+    public static MysqlPoolUtil getOrcreate(DatabaseEnum dataBaseName) {
+ 
+        if (dataBaseName != dbName||null == mysqlPoolUtil) {
+            synchronized (MysqlPoolUtil.class) {
+                if (dataBaseName != dbName||null == mysqlPoolUtil) {
+                    mysqlPoolUtil = new MysqlPoolUtil(dataBaseName);
+                }
+            }
+        }
+        return mysqlPoolUtil;
+    }
+ 
+    private MysqlPoolUtil(DatabaseEnum dataBaseName) {
+        if(null!=cpds){
+            cpds.close();
+            cpds=null;
+        }
+        if(dataBaseName != dbName||mysqlPoolUtil==null){
+            Tuple5<String, String, String, String, String> dbSet = null;
+            switch (dataBaseName){
+                case DOMAIN_ENTITY:
+                    dbSet = EnvUtil.getDomainEntity();
+                    break;
+                case MAT_LIFE:
+                    dbSet = EnvUtil.getMatlifeDBset();
+                    break;
+                case SCM3_USER:
+                    dbSet = EnvUtil.getScmUserDBset();
+                    break;
+                case MACHINE_SERVICE:
+                    dbSet = EnvUtil.getMachineServiceDBset();
+                    break;
+                case BIZ_DATA:
+                    dbSet = EnvUtil.getBizDataDBset();
+                    break;
+                case BASE_MATERIAL:
+                    dbSet = EnvUtil.getBaseMaterialDBset();
+                    break;
+            }
+            DBHOST = dbSet._1();
+            DBUSER = dbSet._2();
+            DBPWD = dbSet._3();
+            DBNAME = dbSet._4();
+            DBPORT = dbSet._5();
+            String url = new StringBuffer().append("jdbc:mysql://").append(DBHOST).append(":").append(DBPORT).append("/").append(DBNAME).append("?useUnicode=true&characterEncoding=UTF-8&allowMultiQueries=true&serverTimezone=Asia/Shanghai").toString();
+            cpds = new ComboPooledDataSource(true);
+            try {
+                cpds.setJdbcUrl(url);
+                cpds.setDriverClass("com.mysql.cj.jdbc.Driver");
+                cpds.setUser(DBUSER);
+                cpds.setPassword(DBPWD);
+                cpds.setTestConnectionOnCheckout(false);
+                cpds.setTestConnectionOnCheckin(true);
+                cpds.setIdleConnectionTestPeriod(1800);
+                cpds.setMaxIdleTime(600);
+                cpds.setMaxPoolSize(10);
+                cpds.setMinPoolSize(1);
+                cpds.setAcquireIncrement(2);
+            } catch (Exception e) {
+                logger.error(e.getMessage());
+            }
+        }else{
+            logger.warn("对象已实例化，正在被异常反射");
+            throw new RuntimeException("对象已实例化，正在被异常反射");
+        }
+    }
+}
